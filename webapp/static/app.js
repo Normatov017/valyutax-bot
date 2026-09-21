@@ -357,8 +357,8 @@ async function loadHistory() {
     const dataMin = Math.min(...values);
     const dataMax = Math.max(...values);
     const span = dataMax - dataMin || dataMax * 0.01 || 1;
-    const chartFloor = dataMin - span * 0.25;
-    const chartCeil = dataMax + span * 0.25;
+    const chartFloor = dataMin - span * 0.18;
+    const chartCeil = dataMax + span * 0.32;
 
     historyChart = new Chart(canvas, {
       type: "bar",
@@ -370,9 +370,11 @@ async function loadHistory() {
             base: chartFloor,
             backgroundColor: (barCtx) => barColor(barCtx.dataIndex),
             hoverBackgroundColor: (barCtx) => barColor(barCtx.dataIndex),
-            borderRadius: 2,
-            barPercentage: 0.55,
-            categoryPercentage: 0.85,
+            borderRadius: { topLeft: 5, topRight: 5, bottomLeft: 0, bottomRight: 0 },
+            borderSkipped: false,
+            minBarLength: 6,
+            barPercentage: 0.68,
+            categoryPercentage: 0.82,
           },
         ],
       },
@@ -407,8 +409,8 @@ async function loadHistory() {
             min: chartFloor,
             max: chartCeil,
             position: "right",
-            ticks: { display: false },
-            grid: { color: borderColor, drawTicks: false },
+            ticks: { display: false, maxTicksLimit: 4 },
+            grid: { color: borderColor, lineWidth: 1, drawTicks: false, borderDash: [3, 3] },
           },
           x: {
             ticks: { color: mutedColor, font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
