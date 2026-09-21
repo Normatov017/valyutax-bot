@@ -31,6 +31,7 @@ TRACKED_CURRENCIES = [
 ]
 
 db.init_db()
+rates.backfill_history(TRACKED_CURRENCIES, days=7)
 
 app = FastAPI(title="ValyutaX API")
 

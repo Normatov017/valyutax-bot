@@ -4,8 +4,20 @@ if (tg) {
   tg.expand();
 }
 
+const FLAGS = {
+  USD: "🇺🇸", EUR: "🇪🇺", RUB: "🇷🇺", GBP: "🇬🇧", CNY: "🇨🇳",
+  KZT: "🇰🇿", TRY: "🇹🇷", JPY: "🇯🇵", AED: "🇦🇪", CHF: "🇨🇭",
+  UZS: "🇺🇿",
+};
+
+function flagFor(code) {
+  return FLAGS[code] || "💱";
+}
+
 let trackedCurrencies = [];
+let latestRates = {};
 let historyChart = null;
+let quickAmountSelected = 1000;
 
 function fmt(n, digits = 2) {
   return Number(n).toLocaleString("uz-UZ", {
@@ -45,41 +57,91 @@ async function loadConfig() {
 
   const fromSelect = document.getElementById("convert-from");
   const toSelect = document.getElementById("convert-to");
-  const historySelect = document.getElementById("history-currency");
+  const historyChips = document.getElementById("history-chips");
 
-  fromSelect.innerHTML = trackedCurrencies.map((c) => `<option value="${c}">${c}</option>`).join("");
+  fromSelect.innerHTML = trackedCurrencies
+    .map((c) => `<option value="${c}">${flagFor(c)} ${c}</option>`)
+    .join("");
   toSelect.innerHTML =
-    `<option value="UZS">UZS (so'm)</option>` +
-    trackedCurrencies.map((c) => `<option value="${c}">${c}</option>`).join("");
-  historySelect.innerHTML = trackedCurrencies.map((c) => `<option value="${c}">${c}</option>`).join("");
+    `<option value="UZS">🇺🇿 UZS</option>` +
+    trackedCurrencies.map((c) => `<option value="${c}">${flagFor(c)} ${c}</option>`).join("");
+
+  historyChips.innerHTML = trackedCurrencies
+    .map((c, i) => `<button class="ccy-chip${i === 0 ? " active" : ""}" data-code="${c}">${c}</button>`)
+    .join("");
+  historyChips.querySelectorAll(".ccy-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      historyChips.querySelectorAll(".ccy-chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      loadHistory();
+    });
+  });
+
+  const quickWrap = document.getElementById("quick-amounts");
+  [100, 500, 1000, 5000].forEach((amount) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "chip" + (amount === quickAmountSelected ? " selected" : "");
+    chip.textContent = fmt(amount, 0);
+    chip.addEventListener("click", () => {
+      quickAmountSelected = amount;
+      document.getElementById("convert-amount").value = amount;
+      quickWrap.querySelectorAll(".chip").forEach((c) => c.classList.remove("selected"));
+      chip.classList.add("selected");
+      runConversion();
+    });
+    quickWrap.appendChild(chip);
+  });
+}
+
+function formatTime(dateStr) {
+  if (!dateStr) return "—";
+  return `bugun, ${new Date().toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 async function loadRates() {
-  const list = document.getElementById("rates-list");
+  const card = document.getElementById("rates-card");
+  const errorBlock = document.getElementById("rates-error");
+  errorBlock.hidden = true;
+  card.hidden = false;
+
   try {
     const data = await fetchJSON("/api/rates");
-    document.getElementById("updated-at").textContent = data.date ? `Sana: ${data.date}` : "";
+    document.getElementById("updated-at").textContent = formatTime(data.date);
+    latestRates = {};
 
-    list.innerHTML = data.currencies
+    card.innerHTML = data.currencies
       .map((c) => {
+        latestRates[c.code] = c.rate;
+        const prevRate = c.rate - c.diff;
+        const pct = prevRate ? (c.diff / prevRate) * 100 : 0;
         const cls = c.diff > 0 ? "up" : c.diff < 0 ? "down" : "flat";
-        const arrow = c.diff > 0 ? "▲" : c.diff < 0 ? "▼" : "•";
+        const arrow = c.diff > 0 ? "▲" : c.diff < 0 ? "▼" : "—";
+        const pctLabel = c.diff === 0 ? "O'zgarishsiz" : `${pct >= 0 ? "+" : ""}${fmt(pct)}%`;
         return `
-          <div class="rate-card">
-            <div>
-              <div class="code">${c.code}</div>
-              <div class="name">${c.name}</div>
+          <div class="rate-row">
+            <div class="rate-left">
+              <div class="flag-badge">${flagFor(c.code)}</div>
+              <div class="rate-names">
+                <div class="rate-code">${c.code}</div>
+                <div class="rate-name">${c.name}</div>
+              </div>
             </div>
-            <div>
-              <div class="rate-value">${fmt(c.rate)} so'm</div>
-              <div class="diff ${cls}">${arrow} ${c.diff >= 0 ? "+" : ""}${fmt(c.diff)}</div>
+            <div class="rate-right">
+              <div class="rate-value">${fmt(c.rate)} <span class="unit">so'm</span></div>
+              <div class="rate-change ${cls}">${arrow} ${pctLabel}</div>
             </div>
           </div>`;
       })
       .join("");
   } catch (err) {
-    list.innerHTML = `<p class="muted">⚠️ ${err.message}</p>`;
+    card.hidden = true;
+    errorBlock.hidden = false;
   }
+}
+
+function setupRetry() {
+  document.getElementById("rates-retry").addEventListener("click", loadRates);
 }
 
 function setupConvert() {
@@ -95,52 +157,98 @@ function setupConvert() {
     if ([...toSelect.options].some((o) => o.value === currentFrom)) {
       toSelect.value = currentFrom;
     }
+    runConversion();
   });
 
-  document.getElementById("convert-submit").addEventListener("click", async () => {
-    const amount = parseFloat(document.getElementById("convert-amount").value);
-    const from = document.getElementById("convert-from").value;
-    const to = document.getElementById("convert-to").value;
-    const resultEl = document.getElementById("convert-result");
-
-    if (!amount || amount <= 0) {
-      resultEl.textContent = "Miqdorni kiriting";
-      return;
-    }
-
-    resultEl.textContent = "…";
-    try {
-      const data = await fetchJSON(
-        `/api/convert?amount=${amount}&from=${from}&to=${to}`
-      );
-      resultEl.textContent = `${fmt(data.amount, 0)} ${data.from} = ${fmt(data.result)} ${data.to}`;
-      tg?.HapticFeedback?.notificationOccurred("success");
-    } catch (err) {
-      resultEl.textContent = `⚠️ ${err.message}`;
-    }
+  document.getElementById("convert-from").addEventListener("change", runConversion);
+  document.getElementById("convert-to").addEventListener("change", runConversion);
+  document.getElementById("convert-amount").addEventListener("input", () => {
+    document.querySelectorAll("#quick-amounts .chip").forEach((c) => c.classList.remove("selected"));
   });
+  document.getElementById("convert-submit").addEventListener("click", runConversion);
+}
+
+async function runConversion() {
+  const amount = parseFloat(document.getElementById("convert-amount").value);
+  const from = document.getElementById("convert-from").value;
+  const to = document.getElementById("convert-to").value;
+  const resultEl = document.getElementById("convert-result");
+  const hintEl = document.getElementById("convert-rate-hint");
+  const toast = document.getElementById("convert-toast");
+  const errorEl = document.getElementById("convert-error");
+
+  toast.hidden = true;
+  errorEl.hidden = true;
+
+  if (!amount || amount <= 0) {
+    return;
+  }
+
+  try {
+    const data = await fetchJSON(`/api/convert?amount=${amount}&from=${from}&to=${to}`);
+    resultEl.textContent = fmt(data.result);
+    const unitRate = data.amount ? data.result / data.amount : 0;
+    hintEl.textContent = `1 ${data.from} = ${fmt(unitRate)} ${data.to}`;
+
+    document.getElementById("convert-toast-sub").textContent = `1 ${data.from} = ${fmt(unitRate)} ${data.to}`;
+    toast.hidden = false;
+    tg?.HapticFeedback?.notificationOccurred("success");
+
+    clearTimeout(runConversion._toastTimer);
+    runConversion._toastTimer = setTimeout(() => {
+      toast.hidden = true;
+    }, 4000);
+  } catch (err) {
+    resultEl.textContent = "0";
+    hintEl.textContent = "";
+    errorEl.textContent = `⚠️ ${err.message}`;
+    errorEl.hidden = false;
+  }
 }
 
 async function loadHistory() {
-  const code = document.getElementById("history-currency").value;
-  const emptyMsg = document.getElementById("history-empty");
-  const canvas = document.getElementById("history-chart");
+  const activeChip = document.querySelector(".ccy-chip.active");
+  const code = activeChip ? activeChip.dataset.code : trackedCurrencies[0];
+
+  const statsRow = document.getElementById("history-stats");
+  const chartCard = document.getElementById("chart-card");
+  const minmaxRow = document.getElementById("minmax-row");
+  const emptyBlock = document.getElementById("history-empty");
 
   try {
     const data = await fetchJSON(`/api/history?code=${code}&days=30`);
 
     if (data.history.length < 2) {
-      emptyMsg.hidden = false;
-      canvas.hidden = true;
+      statsRow.hidden = true;
+      chartCard.hidden = true;
+      minmaxRow.hidden = true;
+      emptyBlock.hidden = false;
       return;
     }
 
-    emptyMsg.hidden = true;
-    canvas.hidden = false;
+    emptyBlock.hidden = true;
+    statsRow.hidden = false;
+    chartCard.hidden = false;
+    minmaxRow.hidden = false;
 
-    const labels = data.history.map((h) => h.date);
+    const labels = data.history.map((h) => h.date.slice(5));
     const values = data.history.map((h) => h.rate);
+    const current = values[values.length - 1];
+    const first = values[0];
+    const changePct = first ? ((current - first) / first) * 100 : 0;
+    const max = Math.max(...values);
+    const min = Math.min(...values);
 
+    document.getElementById("stat-current").textContent = `${fmt(current)}`;
+    const changeEl = document.getElementById("stat-change");
+    changeEl.textContent = `${changePct >= 0 ? "+" : ""}${fmt(changePct)}%`;
+    changeEl.className = "stat-value " + (changePct >= 0 ? "up" : "down");
+    document.getElementById("stat-max").textContent = fmt(max);
+    document.getElementById("stat-min").textContent = `${fmt(min)} UZS`;
+    document.getElementById("chart-title").textContent = `${code} / UZS`;
+    document.getElementById("chart-legend-label").textContent = `${code} kursi (so'mda)`;
+
+    const canvas = document.getElementById("history-chart");
     if (historyChart) {
       historyChart.destroy();
     }
@@ -150,36 +258,42 @@ async function loadHistory() {
         labels,
         datasets: [
           {
-            label: `${code}/UZS`,
             data: values,
-            borderColor: "#2e86de",
-            backgroundColor: "rgba(46,134,222,0.15)",
-            tension: 0.3,
+            borderColor: "#2f80ed",
+            backgroundColor: "rgba(47,128,237,0.12)",
+            tension: 0.35,
             fill: true,
-            pointRadius: 3,
+            pointRadius: 0,
+            borderWidth: 2,
           },
         ],
       },
       options: {
         responsive: true,
         plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: false } },
+        scales: {
+          y: { beginAtZero: false, ticks: { display: false }, grid: { display: false } },
+          x: { grid: { display: false } },
+        },
       },
     });
   } catch (err) {
-    emptyMsg.hidden = false;
-    emptyMsg.textContent = `⚠️ ${err.message}`;
-    canvas.hidden = true;
+    statsRow.hidden = true;
+    chartCard.hidden = true;
+    minmaxRow.hidden = true;
+    emptyBlock.hidden = false;
+    emptyBlock.querySelector(".state-title").textContent = "Tarixni yuklab bo'lmadi";
+    emptyBlock.querySelector(".state-desc").textContent = err.message;
   }
 }
 
 async function init() {
   setupTabs();
+  setupRetry();
   setupConvert();
   await loadConfig();
   await loadRates();
-
-  document.getElementById("history-currency").addEventListener("change", loadHistory);
+  await runConversion();
 }
 
 init();

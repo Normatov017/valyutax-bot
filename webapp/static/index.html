@@ -6,12 +6,15 @@
   <title>ValyutaX</title>
   <link rel="stylesheet" href="/assets/style.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <h1>💱 ValyutaX</h1>
-    <span id="updated-at" class="muted"></span>
+    <h1>ValyutaX</h1>
+    <div class="meta">
+      <span class="eyebrow">Yangilandi</span>
+      <span class="updated-value" id="updated-at">—</span>
+    </div>
   </header>
 
   <nav class="tabs">
@@ -21,33 +24,113 @@
   </nav>
 
   <main>
+    <!-- Kurs -->
     <section id="tab-rates" class="tab-panel active">
-      <div id="rates-list" class="card-list">
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
+      <div class="surface-card" id="rates-card">
+        <div class="skeleton-row">
+          <div class="skeleton-circle"></div>
+          <div class="skeleton-lines"><div class="skeleton-line w60"></div><div class="skeleton-line w35"></div></div>
+        </div>
+        <div class="skeleton-row">
+          <div class="skeleton-circle"></div>
+          <div class="skeleton-lines"><div class="skeleton-line w60"></div><div class="skeleton-line w35"></div></div>
+        </div>
+        <div class="skeleton-row">
+          <div class="skeleton-circle"></div>
+          <div class="skeleton-lines"><div class="skeleton-line w60"></div><div class="skeleton-line w35"></div></div>
+        </div>
+      </div>
+      <div class="state-block" id="rates-error" hidden>
+        <div class="state-icon error">⚠️</div>
+        <div class="state-title">Ma'lumotlarni yuklashda xato</div>
+        <div class="state-desc">Internet aloqasini tekshiring va qayta urinib ko'ring</div>
+        <button class="retry-btn" id="rates-retry">Qayta urinish</button>
       </div>
     </section>
 
+    <!-- Konvertatsiya -->
     <section id="tab-convert" class="tab-panel">
       <div class="convert-form">
-        <input id="convert-amount" type="number" inputmode="decimal" placeholder="Miqdor" value="100" />
-        <div class="convert-row">
-          <select id="convert-from"></select>
-          <button id="convert-swap" type="button" aria-label="Almashtirish">⇄</button>
-          <select id="convert-to"></select>
+        <div class="amount-wrap">
+          <span class="field-label">Manbaa</span>
+          <div class="amount-box">
+            <input id="convert-amount" type="number" inputmode="decimal" value="1000" />
+            <select id="convert-from" class="ccy-select"></select>
+          </div>
         </div>
-        <button id="convert-submit" type="button" class="primary-btn">Aylantirish</button>
-        <div id="convert-result" class="result"></div>
+
+        <button id="convert-swap" class="swap-btn" type="button" aria-label="Almashtirish">⇅</button>
+
+        <div class="amount-wrap">
+          <span class="field-label">Natija</span>
+          <div class="amount-box result">
+            <span class="amount-value" id="convert-result">0</span>
+            <select id="convert-to" class="ccy-select">
+              <option value="UZS">UZS</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="rate-hint" id="convert-rate-hint"></div>
+
+        <div class="quick-amounts" id="quick-amounts"></div>
+
+        <button id="convert-submit" class="primary-btn" type="button">Aylantirish</button>
+
+        <div class="toast" id="convert-toast" hidden>
+          <div class="toast-icon">✓</div>
+          <div>
+            <div class="toast-title">Konvertatsiya amalga oshirildi</div>
+            <div class="toast-sub" id="convert-toast-sub"></div>
+          </div>
+        </div>
+        <div class="error-text" id="convert-error" hidden></div>
       </div>
     </section>
 
+    <!-- Tarix -->
     <section id="tab-history" class="tab-panel">
-      <select id="history-currency"></select>
-      <canvas id="history-chart" height="220"></canvas>
-      <p id="history-empty" class="muted" hidden>
-        Tarix hali to'planmoqda — bot har kuni bitta nuqta qo'shadi.
-      </p>
+      <div class="ccy-chips" id="history-chips"></div>
+
+      <div id="history-content">
+        <div class="stats-row" id="history-stats" hidden>
+          <div class="stat-cell">
+            <span class="stat-label">Joriy kurs</span>
+            <span class="stat-value" id="stat-current">—</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-label">30 kun o'zg.</span>
+            <span class="stat-value" id="stat-change">—</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-label">30-kun max</span>
+            <span class="stat-value" id="stat-max">—</span>
+          </div>
+        </div>
+
+        <div class="chart-card" id="chart-card" hidden>
+          <div class="chart-head">
+            <span class="chart-title" id="chart-title">USD / UZS</span>
+            <span class="chart-badge">30 kun</span>
+          </div>
+          <canvas id="history-chart" height="180"></canvas>
+          <div class="chart-legend">
+            <span class="swatch"></span>
+            <span id="chart-legend-label">USD kursi (so'mda)</span>
+          </div>
+        </div>
+
+        <div class="minmax-row" id="minmax-row" hidden>
+          <span class="minmax-label">30-kun minimal</span>
+          <span class="minmax-value" id="stat-min" style="color: var(--down)">—</span>
+        </div>
+
+        <div class="state-block" id="history-empty" hidden>
+          <div class="state-icon info">📈</div>
+          <div class="state-title">Tarix hali to'planmoqda</div>
+          <div class="state-desc">Valyuta kurslari tarixi yetarli bo'lgach, bu yerda ko'rsatiladi</div>
+        </div>
+      </div>
     </section>
   </main>
 

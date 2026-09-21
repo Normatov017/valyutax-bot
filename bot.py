@@ -398,6 +398,10 @@ def build_app() -> Application:
         raise RuntimeError("BOT_TOKEN muhit o'zgaruvchisi berilmagan")
 
     db.init_db()
+    filled = rates.backfill_history(TRACKED_CURRENCIES, days=7)
+    if filled:
+        logger.info("Tarix orqaga to'ldirildi: %s yozuv", filled)
+
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
