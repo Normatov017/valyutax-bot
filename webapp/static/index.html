@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ValyutaX</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>💱 ValyutaX</h1>
+    <span id="updated-at" class="muted"></span>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="rates">Kurs</button>
+    <button class="tab" data-tab="convert">Konvertatsiya</button>
+    <button class="tab" data-tab="history">Tarix</button>
+  </nav>
+
+  <main>
+    <section id="tab-rates" class="tab-panel active">
+      <div id="rates-list" class="card-list">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+      </div>
+    </section>
+
+    <section id="tab-convert" class="tab-panel">
+      <div class="convert-form">
+        <input id="convert-amount" type="number" inputmode="decimal" placeholder="Miqdor" value="100" />
+        <div class="convert-row">
+          <select id="convert-from"></select>
+          <button id="convert-swap" type="button" aria-label="Almashtirish">⇄</button>
+          <select id="convert-to"></select>
+        </div>
+        <button id="convert-submit" type="button" class="primary-btn">Aylantirish</button>
+        <div id="convert-result" class="result"></div>
+      </div>
+    </section>
+
+    <section id="tab-history" class="tab-panel">
+      <select id="history-currency"></select>
+      <canvas id="history-chart" height="220"></canvas>
+      <p id="history-empty" class="muted" hidden>
+        Tarix hali to'planmoqda — bot har kuni bitta nuqta qo'shadi.
+      </p>
+    </section>
+  </main>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

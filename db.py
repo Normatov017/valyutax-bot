@@ -39,6 +39,11 @@ def init_db() -> None:
                 rate REAL,
                 updated_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS usage_stats (
+                currency_code TEXT PRIMARY KEY,
+                request_count INTEGER NOT NULL DEFAULT 0
+            );
             """
         )
 
@@ -105,3 +110,28 @@ def set_last_notified(currency_code: str, rate: float) -> None:
             "VALUES (?, ?, ?)",
             (currency_code, rate, datetime.now(timezone.utc).isoformat()),
         )
+
+
+def log_usage(currency_code: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO usage_stats (currency_code, request_count) VALUES (?, 1) "
+            "ON CONFLICT(currency_code) DO UPDATE SET request_count = request_count + 1",
+            (currency_code,),
+        )
+
+
+def get_top_currencies(limit: int = 5) -> list[tuple[str, int]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT currency_code, request_count FROM usage_stats "
+            "ORDER BY request_count DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [(row["currency_code"], row["request_count"]) for row in rows]
+
+
+def get_subscriber_count() -> int:
+    with get_conn() as conn:
+        row = conn.execute("SELECT COUNT(*) AS n FROM subscribers").fetchone()
+        return row["n"] if row else 0

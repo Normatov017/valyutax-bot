@@ -10,9 +10,14 @@ Ikkala manba ham qisqa vaqt (TTL) xotirada keshlanadi, shu bilan har bir
 foydalanuvchi xabari uchun tashqi API'ga alohida so'rov yubormaydi.
 """
 
+import logging
 import time
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
+logger = logging.getLogger(__name__)
 
 CBU_ALL_URL = "https://cbu.uz/uz/arkhiv-kursov-valyut/json/"
 INTL_URL_TEMPLATE = "https://open.er-api.com/v6/latest/{base}"
@@ -21,6 +26,19 @@ _CACHE_TTL_SECONDS = 300
 
 _cbu_cache: dict = {"rates": None, "fetched_at": 0.0}
 _intl_cache: dict = {"rates": None, "fetched_at": 0.0}
+
+# So'nggi muvaffaqiyatli olingan kurs vaqti — /health va admin panelida ko'rsatiladi.
+last_success: dict = {"cbu": None, "intl": None}
+
+_session = requests.Session()
+_retry = Retry(
+    total=3,
+    backoff_factor=0.5,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET"],
+)
+_session.mount("https://", HTTPAdapter(max_retries=_retry))
+_session.mount("http://", HTTPAdapter(max_retries=_retry))
 
 
 class RateFetchError(RuntimeError):
@@ -37,10 +55,11 @@ def fetch_cbu_rates(force: bool = False) -> dict[str, dict]:
         return _cbu_cache["rates"]
 
     try:
-        response = requests.get(CBU_ALL_URL, timeout=10)
+        response = _session.get(CBU_ALL_URL, timeout=10)
         response.raise_for_status()
         raw = response.json()
     except (requests.RequestException, ValueError) as exc:
+        logger.warning("CBU so'rovi muvaffaqiyatsiz: %s", exc)
         if _cbu_cache["rates"]:
             return _cbu_cache["rates"]
         raise RateFetchError(f"CBU API xato: {exc}") from exc
@@ -63,6 +82,7 @@ def fetch_cbu_rates(force: bool = False) -> dict[str, dict]:
 
     _cbu_cache["rates"] = rates
     _cbu_cache["fetched_at"] = now
+    last_success["cbu"] = time.time()
     return rates
 
 
@@ -72,19 +92,21 @@ def fetch_international_rates(base: str = "USD", force: bool = False) -> dict[st
         return _intl_cache["rates"]
 
     try:
-        response = requests.get(INTL_URL_TEMPLATE.format(base=base), timeout=10)
+        response = _session.get(INTL_URL_TEMPLATE.format(base=base), timeout=10)
         response.raise_for_status()
         data = response.json()
         if data.get("result") != "success":
             raise RateFetchError(f"Xalqaro API muvaffaqiyatsiz: {data}")
         rates = data["rates"]
     except (requests.RequestException, ValueError, KeyError) as exc:
+        logger.warning("Xalqaro API so'rovi muvaffaqiyatsiz: %s", exc)
         if _intl_cache["rates"]:
             return _intl_cache["rates"]
         raise RateFetchError(f"Xalqaro API xato: {exc}") from exc
 
     _intl_cache["rates"] = rates
     _intl_cache["fetched_at"] = now
+    last_success["intl"] = time.time()
     return rates
 
 
