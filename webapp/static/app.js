@@ -14,6 +14,78 @@ function flagFor(code) {
   return FLAGS[code] || "💱";
 }
 
+// Trading-terminal look: dashed crosshair following the cursor/touch, plus a
+// dashed "last price" line with a floating badge at the right edge — Chart.js
+// has neither built in, so both are small custom plugins.
+const crosshairPlugin = {
+  id: "crosshair",
+  afterDraw(chart) {
+    const active = chart.getActiveElements();
+    if (!active.length) return;
+    const { ctx, chartArea } = chart;
+    const { x, y } = active[0].element;
+
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = chart.$crosshairColor || "rgba(120,120,130,0.5)";
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.moveTo(chartArea.left, y);
+    ctx.lineTo(chartArea.right, y);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
+const lastPricePlugin = {
+  id: "lastPrice",
+  afterDatasetsDraw(chart) {
+    const meta = chart.getDatasetMeta(0);
+    const point = meta.data[meta.data.length - 1];
+    const values = chart.data.datasets[0].data;
+    if (!point || !values.length) return;
+
+    const { ctx, chartArea } = chart;
+    const color = chart.$primaryColor || "#2f80ed";
+    const label = fmt(values[values.length - 1], 0);
+
+    ctx.save();
+    ctx.setLineDash([2, 3]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(chartArea.left, point.y);
+    ctx.lineTo(chartArea.right, point.y);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.font = "700 10px -apple-system, BlinkMacSystemFont, sans-serif";
+    const textWidth = ctx.measureText(label).width;
+    const paddingX = 6;
+    const badgeW = textWidth + paddingX * 2;
+    const badgeH = 16;
+    const badgeX = chartArea.right - badgeW;
+    const badgeY = Math.min(Math.max(point.y - badgeH / 2, chartArea.top), chartArea.bottom - badgeH);
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4);
+    ctx.fill();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, badgeX + badgeW / 2, badgeY + badgeH / 2 + 0.5);
+    ctx.restore();
+  },
+};
+
+if (window.Chart) {
+  Chart.register(crosshairPlugin, lastPricePlugin);
+}
+
 let trackedCurrencies = [];
 let latestRates = {};
 let historyChart = null;
@@ -270,32 +342,44 @@ async function loadHistory() {
     const primaryColor = cssVar("--primary") || "#2f80ed";
     const surfaceColor = cssVar("--surface") || "#ffffff";
     const textColor = cssVar("--text") || "#0b0b0f";
+    const mutedColor = cssVar("--text-muted") || "#8a8d93";
     const borderColor = cssVar("--border") || "rgba(0,0,0,0.08)";
+    const upColor = cssVar("--up") || "#22c55e";
+    const downColor = cssVar("--down") || "#ef4444";
+    const crosshairColor = mutedColor;
+    const lastSegmentUp = values[values.length - 1] >= values[values.length - 2];
+
+    const barColor = (i) => (i > 0 && values[i] < values[i - 1] ? downColor : upColor);
+
+    // Bars need a finite, nearby base — Chart.js's default base (pixel for
+    // value 0) extrapolates wildly off-canvas when the axis floor sits far
+    // above 0 (as currency rates do), which breaks hit-testing for hover.
+    const dataMin = Math.min(...values);
+    const dataMax = Math.max(...values);
+    const span = dataMax - dataMin || dataMax * 0.01 || 1;
+    const chartFloor = dataMin - span * 0.25;
+    const chartCeil = dataMax + span * 0.25;
 
     historyChart = new Chart(canvas, {
-      type: "line",
+      type: "bar",
       data: {
         labels,
         datasets: [
           {
             data: values,
-            borderColor: primaryColor,
-            backgroundColor: "rgba(47,128,237,0.12)",
-            tension: 0.35,
-            fill: true,
-            pointRadius: 0,
-            pointHitRadius: 16,
-            pointHoverRadius: 5,
-            pointHoverBackgroundColor: primaryColor,
-            pointHoverBorderColor: surfaceColor,
-            pointHoverBorderWidth: 2,
-            borderWidth: 2,
+            base: chartFloor,
+            backgroundColor: (barCtx) => barColor(barCtx.dataIndex),
+            hoverBackgroundColor: (barCtx) => barColor(barCtx.dataIndex),
+            borderRadius: 2,
+            barPercentage: 0.55,
+            categoryPercentage: 0.85,
           },
         ],
       },
       options: {
         responsive: true,
         interaction: { mode: "index", intersect: false },
+        layout: { padding: { right: 4 } },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -311,15 +395,30 @@ async function loadHistory() {
             callbacks: {
               title: (items) => formatFullDate(fullDates[items[0].dataIndex]),
               label: (item) => `${fmt(item.parsed.y)} so'm`,
+              labelTextColor: (item) => {
+                const i = item.dataIndex;
+                return i > 0 && values[i] < values[i - 1] ? downColor : upColor;
+              },
             },
           },
         },
         scales: {
-          y: { beginAtZero: false, ticks: { display: false }, grid: { display: false } },
-          x: { grid: { display: false } },
+          y: {
+            min: chartFloor,
+            max: chartCeil,
+            position: "right",
+            ticks: { display: false },
+            grid: { color: borderColor, drawTicks: false },
+          },
+          x: {
+            ticks: { color: mutedColor, font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+            grid: { display: false },
+          },
         },
       },
     });
+    historyChart.$primaryColor = lastSegmentUp ? upColor : downColor;
+    historyChart.$crosshairColor = crosshairColor;
   } catch (err) {
     statsRow.hidden = true;
     chartCard.hidden = true;
