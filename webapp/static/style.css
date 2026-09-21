@@ -60,7 +60,9 @@ body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-variant-numeric: tabular-nums;
-  padding: 16px 16px 32px;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(96px, calc(env(safe-area-inset-bottom) + 80px)) max(16px, env(safe-area-inset-left));
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 /* Top bar */

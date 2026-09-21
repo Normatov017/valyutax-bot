@@ -1,7 +1,43 @@
 const tg = window.Telegram?.WebApp;
+
+// Match the user's ACTUAL Telegram theme instead of a fixed guessed palette —
+// this is what makes the page feel like part of Telegram rather than a
+// foreign website loaded inside it. themeParams are pushed live by the client
+// and change instantly if the user flips light/dark while the app is open.
+function applyTelegramTheme() {
+  if (!tg) return;
+  const p = tg.themeParams || {};
+  const root = document.documentElement.style;
+  const map = {
+    "--bg": p.bg_color,
+    "--surface": p.secondary_bg_color,
+    "--surface-2": p.bg_color,
+    "--text": p.text_color,
+    "--text-muted": p.hint_color,
+    "--primary": p.button_color || p.link_color,
+    "--primary-contrast": p.button_text_color,
+  };
+  for (const [cssVarName, value] of Object.entries(map)) {
+    if (value) root.setProperty(cssVarName, value);
+  }
+  if (p.bg_color) {
+    tg.setHeaderColor?.(p.bg_color);
+    tg.setBackgroundColor?.(p.bg_color);
+    tg.setBottomBarColor?.(p.bg_color);
+  }
+}
+
+// telegram-web-app.js loads (and stubs out its API) even outside a real
+// Telegram client, e.g. a plain browser tab. Only initData is populated when
+// the page was actually opened from Telegram — use that, not the mere
+// presence of `tg`, to decide whether native chrome (MainButton) is real.
+const insideTelegram = Boolean(tg?.initData);
+
 if (tg) {
   tg.ready();
   tg.expand();
+  applyTelegramTheme();
+  tg.onEvent("themeChanged", applyTelegramTheme);
 }
 
 const FLAGS = {
@@ -121,6 +157,19 @@ async function fetchJSON(url) {
   return res.json();
 }
 
+// On the Convert tab, the primary action is Telegram's own native MainButton
+// (bottom-docked, styled by the client itself) instead of an in-page button —
+// it's what makes the action feel like part of Telegram, not a webpage widget.
+function syncMainButton(tabName) {
+  if (!insideTelegram) return;
+  if (tabName === "convert") {
+    tg.MainButton.setText("Aylantirish");
+    tg.MainButton.show();
+  } else {
+    tg.MainButton.hide();
+  }
+}
+
 function setupTabs() {
   const tabs = document.querySelectorAll(".tab");
   tabs.forEach((tab) => {
@@ -129,12 +178,18 @@ function setupTabs() {
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
       tab.classList.add("active");
       document.getElementById(`tab-${tab.dataset.tab}`).classList.add("active");
+      syncMainButton(tab.dataset.tab);
 
       if (tab.dataset.tab === "history") {
         loadHistory();
       }
     });
   });
+
+  if (insideTelegram) {
+    tg.MainButton.onClick(runConversion);
+    document.getElementById("convert-submit").hidden = true;
+  }
 }
 
 async function loadConfig() {
@@ -270,6 +325,8 @@ async function runConversion() {
     return;
   }
 
+  tg?.MainButton?.showProgress(true);
+
   try {
     const data = await fetchJSON(`/api/convert?amount=${amount}&from=${from}&to=${to}`);
     resultEl.textContent = fmt(data.result);
@@ -289,6 +346,8 @@ async function runConversion() {
     hintEl.textContent = "";
     errorEl.textContent = `⚠️ ${err.message}`;
     errorEl.hidden = false;
+  } finally {
+    tg?.MainButton?.hideProgress();
   }
 }
 
