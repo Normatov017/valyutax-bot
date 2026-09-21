@@ -26,6 +26,20 @@ function fmt(n, digits = 2) {
   });
 }
 
+const UZ_MONTHS = [
+  "yanvar", "fevral", "mart", "aprel", "may", "iyun",
+  "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr",
+];
+
+function formatFullDate(iso) {
+  const [year, month, day] = iso.split("-").map(Number);
+  return `${day}-${UZ_MONTHS[month - 1]}, ${year}`;
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 async function fetchJSON(url) {
   const res = await fetch(url);
   if (!res.ok) {
@@ -231,6 +245,7 @@ async function loadHistory() {
     chartCard.hidden = false;
     minmaxRow.hidden = false;
 
+    const fullDates = data.history.map((h) => h.date);
     const labels = data.history.map((h) => h.date.slice(5));
     const values = data.history.map((h) => h.rate);
     const current = values[values.length - 1];
@@ -252,6 +267,11 @@ async function loadHistory() {
     if (historyChart) {
       historyChart.destroy();
     }
+    const primaryColor = cssVar("--primary") || "#2f80ed";
+    const surfaceColor = cssVar("--surface") || "#ffffff";
+    const textColor = cssVar("--text") || "#0b0b0f";
+    const borderColor = cssVar("--border") || "rgba(0,0,0,0.08)";
+
     historyChart = new Chart(canvas, {
       type: "line",
       data: {
@@ -259,18 +279,41 @@ async function loadHistory() {
         datasets: [
           {
             data: values,
-            borderColor: "#2f80ed",
+            borderColor: primaryColor,
             backgroundColor: "rgba(47,128,237,0.12)",
             tension: 0.35,
             fill: true,
             pointRadius: 0,
+            pointHitRadius: 16,
+            pointHoverRadius: 5,
+            pointHoverBackgroundColor: primaryColor,
+            pointHoverBorderColor: surfaceColor,
+            pointHoverBorderWidth: 2,
             borderWidth: 2,
           },
         ],
       },
       options: {
         responsive: true,
-        plugins: { legend: { display: false } },
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: surfaceColor,
+            titleColor: textColor,
+            bodyColor: textColor,
+            borderColor,
+            borderWidth: 1,
+            padding: 10,
+            displayColors: false,
+            titleFont: { size: 12, weight: "600" },
+            bodyFont: { size: 14, weight: "700" },
+            callbacks: {
+              title: (items) => formatFullDate(fullDates[items[0].dataIndex]),
+              label: (item) => `${fmt(item.parsed.y)} so'm`,
+            },
+          },
+        },
         scales: {
           y: { beginAtZero: false, ticks: { display: false }, grid: { display: false } },
           x: { grid: { display: false } },
